@@ -2,137 +2,125 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"os"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-type Styles struct {
-	BorderColor lipgloss.Color
-	InputField  lipgloss.Style
+var docStyle = lipgloss.NewStyle().Margin(1, 2)
+
+type Attribute struct {
+	Type  string
+	Value string
 }
 
-func DefaultStyles() *Styles {
-	s := new(Styles)
-	s.BorderColor = lipgloss.Color("36")
-	s.InputField = lipgloss.NewStyle().BorderForeground(s.BorderColor).BorderStyle(lipgloss.NormalBorder()).Padding(1).Width(80)
-
-	return s
-}
+func (i Attribute) Title() string       { return i.Type }
+func (i Attribute) Description() string { return i.Value }
+func (i Attribute) FilterValue() string { return i.Type }
 
 type model struct {
-	index     int
-	questions []Question
-	width     int
-	height    int
-	styles    *Styles
-	done      bool
-}
-
-type Question struct {
-	question string
-	answer   string
-	input    Input
-}
-
-func NewQuestion(q string) Question {
-	return Question{question: q}
-}
-
-func newShortQuestion(q string) Question {
-	question := NewQuestion(q)
-	model := NewShortAnswerField()
-	question.input = model
-	return question
-}
-
-func newLongQuestion(q string) Question {
-	question := NewQuestion(q)
-	model := NewLongAnswerField()
-	question.input = model
-	return question
-}
-func New(questions []Question) *model {
-	styles := DefaultStyles()
-	return &model{questions: questions, styles: styles}
+	list     list.Model
+	editing  bool
+	editText string
 }
 
 func (m model) Init() tea.Cmd {
 	return nil
 }
 
-func (m model) View() string {
-	current := m.questions[m.index]
-
-	if m.done {
-		var output string
-		for _, q := range m.questions {
-			output += fmt.Sprintf("%s, %s \n", q.question, q.answer)
-		}
-		return output
-	}
-
-	if m.width == 0 {
-		return "Loading..."
-	}
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		lipgloss.JoinVertical(lipgloss.Center, m.questions[m.index].question, m.styles.InputField.Render(current.input.View())),
-	)
-}
+var newText string
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	current := &m.questions[m.index]
-
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c":
+		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
-		case "enter":
-			if m.index == len(m.questions)-1 {
-				m.done = true
-			}
-			current.answer = current.input.Value()
-			m.Next()
-			return m, current.input.Blur
 		}
+
+		if msg.String() == "enter" {
+			if !m.editing {
+				m.editing = true
+			} else {
+				m.editing = false
+				selectedItem := m.list.SelectedItem().(Attribute)
+				selectedIndex := m.list.Index()
+				selectedItem.Value = m.editText
+				// Clear the editText after saving
+				m.editText = ""
+
+				return m, m.list.SetItem(selectedIndex, selectedItem)
+
+			}
+			return m, nil
+		}
+		if m.editing {
+			switch msg.String() {
+			case "backspace":
+				// Handle backspace when editing
+				if len(m.editText) > 0 {
+					m.editText = m.editText[:len(m.editText)-1]
+				}
+			default:
+				// Capture user input while editing
+				m.editText += msg.String()
+			}
+		}
+	case tea.WindowSizeMsg:
+		h, v := docStyle.GetFrameSize()
+		m.list.SetSize(msg.Width-h, msg.Height-v)
 	}
 
-	current.input, cmd = current.input.Update(msg)
-
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
 	return m, cmd
 }
 
-func (m *model) Next() {
-	if m.index < len(m.questions)-1 {
-		m.index++
+func (m model) View() string {
+	var inputField string
+
+	if m.editing {
+		// Show the input field when editing
+		selectedItem := m.list.Items()[m.list.Index()]
+
+		// Assuming your list items are of type Attribute
+		if attr, ok := selectedItem.(Attribute); ok {
+			inputField = fmt.Sprintf("Editing: %s (original: %s)\n%s", attr.Value, attr.Value, m.editText)
+		}
 	} else {
-		m.index = 0
+		inputField = ""
 	}
+
+	return docStyle.Render(fmt.Sprintf("%s\n%s", m.list.View(), inputField))
 }
 
 func main() {
-	questions := []Question{newShortQuestion("What is your name?"), newShortQuestion("What is your favorite animal?"), newLongQuestion("Is this really what you want with life?")}
-	m := New(questions)
+	items := []list.Item{
+		Attribute{Type: "Strength", Value: "60"},
+		Attribute{Type: "Dexterity", Value: "70"},
+		Attribute{Type: "Constitution", Value: "55"},
+		Attribute{Type: "Intelligence", Value: "75"},
+		Attribute{Type: "Power", Value: "40"},
+		Attribute{Type: "Appearance", Value: "65"},
+		Attribute{Type: "Size", Value: "65"},
+		Attribute{Type: "Education", Value: "80"},
+	}
+
+	m := model{list: list.New(items, list.NewDefaultDelegate(), 0, 0)}
+	m.list.Title = "My CoC Character"
+
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	f, err := tea.LogToFile("debug.log", "debug")
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("fatal:", err)
+		os.Exit(1)
 	}
-
 	defer f.Close()
-	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
-		log.Fatal(err)
+		fmt.Println("Error running program:", err)
+		os.Exit(1)
 	}
 }
