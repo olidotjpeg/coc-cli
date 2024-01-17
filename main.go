@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/olidotjpeg/coc-cli/styles"
+
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -34,6 +36,8 @@ type model struct {
 	secondList list.Model
 	editing    bool
 	editText   string
+	width      int
+	height     int
 }
 
 func (m model) Init() tea.Cmd {
@@ -79,7 +83,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
+		m.width = msg.Width
+		m.height = msg.Height
 		m.list.SetSize(msg.Width-h, msg.Height-v)
+		m.secondList.SetSize(msg.Width-h, msg.Height-v)
 	}
 
 	var cmd tea.Cmd
@@ -109,7 +116,31 @@ func (m model) View() string {
 	views = append(views, m.list.View())
 	views = append(views, m.secondList.View())
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, views...) + "\n\n" + inputField
+	if m.width == 0 {
+		return ""
+	}
+
+	StyleList := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, true, false, false).
+		BorderForeground(styles.Subtle).
+		MarginRight(2).
+		Height(8).
+		Width(styles.ColumnWidth + 1)
+
+	lists := lipgloss.JoinHorizontal(lipgloss.Top,
+		StyleList.Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				m.list.View(),
+			),
+		),
+		StyleList.Copy().Width(styles.ColumnWidth).Render(
+			m.secondList.View(),
+		),
+	)
+
+	joinedView := lipgloss.JoinHorizontal(lipgloss.Top, lists) + "\n\n" + inputField
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, joinedView)
 }
 
 func main() {
@@ -134,7 +165,9 @@ func main() {
 		secondList: list.New(secondListItems, list.NewDefaultDelegate(), 0, 0),
 	}
 	m.list.Title = "Attributes"
+	m.list.SetShowHelp(false)
 	m.secondList.Title = "Skills"
+	m.secondList.SetShowHelp(false)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 

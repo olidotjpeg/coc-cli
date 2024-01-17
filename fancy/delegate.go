@@ -1,4 +1,4 @@
-package fancy
+package main
 
 import (
 	"github.com/charmbracelet/bubbles/key"
