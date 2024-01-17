@@ -16,14 +16,24 @@ type Attribute struct {
 	Value string
 }
 
+type Skill struct {
+	Name  string
+	Value string
+}
+
 func (i Attribute) Title() string       { return i.Type }
 func (i Attribute) Description() string { return i.Value }
 func (i Attribute) FilterValue() string { return i.Type }
 
+func (i Skill) Title() string       { return i.Name }
+func (i Skill) Description() string { return i.Value }
+func (i Skill) FilterValue() string { return i.Name }
+
 type model struct {
-	list     list.Model
-	editing  bool
-	editText string
+	list       list.Model
+	secondList list.Model
+	editing    bool
+	editText   string
 }
 
 func (m model) Init() tea.Cmd {
@@ -74,6 +84,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
+	m.secondList, cmd = m.secondList.Update(msg)
 	return m, cmd
 }
 
@@ -92,7 +103,13 @@ func (m model) View() string {
 		inputField = ""
 	}
 
-	return docStyle.Render(fmt.Sprintf("%s\n%s", m.list.View(), inputField))
+	// return docStyle.Render(fmt.Sprintf("%s\n%s", m.list.View(), m.secondList.View(), inputField))
+	// Create a layout with two lists side by side
+	var views []string
+	views = append(views, m.list.View())
+	views = append(views, m.secondList.View())
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, views...) + "\n\n" + inputField
 }
 
 func main() {
@@ -107,8 +124,17 @@ func main() {
 		Attribute{Type: "Education", Value: "80"},
 	}
 
-	m := model{list: list.New(items, list.NewDefaultDelegate(), 0, 0)}
-	m.list.Title = "My CoC Character"
+	secondListItems := []list.Item{
+		Skill{Name: "investigation", Value: "60"},
+		Skill{Name: "Occult", Value: "70"},
+	}
+
+	m := model{
+		list:       list.New(items, list.NewDefaultDelegate(), 0, 0),
+		secondList: list.New(secondListItems, list.NewDefaultDelegate(), 0, 0),
+	}
+	m.list.Title = "Attributes"
+	m.secondList.Title = "Skills"
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
